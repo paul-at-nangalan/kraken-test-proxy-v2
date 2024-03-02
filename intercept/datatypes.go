@@ -38,3 +38,10 @@ type Execution struct {
 	Timestamp    string  `json:"timestamp"`
 	TradeId      int64   `json:"trade_id"`
 }
+
+type ExecMsg struct {
+	Channel  string       `json:"channel"`
+	Data     []*Execution `json:"data"`
+	Sequence int64        `json:"sequence"`
+	Type     string       `json:"type"`
+}

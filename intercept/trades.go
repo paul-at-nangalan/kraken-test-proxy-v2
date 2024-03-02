@@ -31,6 +31,7 @@ type TradeIntercept struct {
 	orderrequests chan *OrderReq
 	traderesp     chan *Execution
 	execid        int64
+	sequence      int64
 }
 
 func NewTradeIntercept() *TradeIntercept {
@@ -110,11 +111,40 @@ func (p *TradeIntercept) Southbound(msg []byte) {
 		}
 
 		///now look at the southbound message to see if it is an order resposne for any order requests
-
+		datamap := make(map[string]interface{})
+		err := json.Unmarshal(msg, &datamap)
+		handlers.PanicOnError(err)
+		channel, ok := datamap["channel"].(string)
+		if ok && channel == "executions" {
+			data := datamap["data"].([]interface{})
+			for _, entry := range data {
+				execdetails := entry.(map[string]interface{})
+				if execdetails["exec_type"].(string) == "trade" {
+					orderid := int64(execdetails["order_userref"].(float64))
+					exectrade, ok := p.pendingtrades[orderid]
+					if !ok {
+						continue
+					}
+					p.traderesp <- &exectrade
+					delete(p.pendingtrades, orderid)
+				}
+			}
+		}
 	}
 }
 
 func (p *TradeIntercept) InjectSouth() (msg []byte) {
-	//TODO implement me
-	panic("implement me")
+	if p.enabled && len(p.traderesp) > 0 {
+		exec := <-p.traderesp
+		execmsg := &ExecMsg{
+			Channel:  "executions",
+			Data:     []*Execution{exec},
+			Sequence: p.sequence,
+			Type:     "snapshot",
+		}
+		msg, err := json.Marshal(execmsg)
+		handlers.PanicOnError(err)
+		return msg
+	}
+	return nil
 }

@@ -5,6 +5,7 @@ import (
 	"github.com/paul-at-nangalan/errorhandler/handlers"
 	"github.com/paul-at-nangalan/json-config/cfg"
 	"kraken-test-proxy-v2/client"
+	"kraken-test-proxy-v2/intercept"
 	"log"
 	"net/http"
 	"os"
@@ -110,7 +111,8 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	relay := client.Connect()
 
-	wshandler := NewWebSockProxy(nil, conn, relay)
+	msgintercept := intercept.NewTradeIntercept()
+	wshandler := NewWebSockProxy(msgintercept, conn, relay)
 
 	go wshandler.southbound()
 	go wshandler.northbound()
