@@ -34,8 +34,8 @@ func (p *Config) Expand() {
 var cfgsvr *Config
 
 type Intercept interface {
-	Northbound(msg []byte)
-	Southbound(msg []byte)
+	Northbound(msg []byte) (forward bool)
+	Southbound(msg []byte) (forward bool)
 
 	InjectSouth() (msg []byte) /// nil for no message
 }
@@ -141,7 +141,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request, private bool) {
 		enablelogging = true
 	}
 
-	msgintercept := intercept.NewTradeIntercept()
+	msgintercept := intercept.NewTradeIntercept(enablelogging)
 	wshandler := NewWebSockProxy(msgintercept, conn, relay, enablelogging)
 
 	go wshandler.southbound()

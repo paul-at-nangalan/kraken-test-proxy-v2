@@ -45,3 +45,26 @@ type ExecMsg struct {
 	Sequence int64        `json:"sequence"`
 	Type     string       `json:"type"`
 }
+
+type CancelParams struct {
+	Orders []string `json:"orders"` //// order ID's
+}
+
+type CancelRequest struct {
+	Method string       `json:"method"`
+	Params CancelParams `json:"params"`
+	ReqId  int64        `json:"req_id"`
+}
+
+type CancelResult struct {
+	Count int `json:"count"`
+}
+
+type CancelResp struct {
+	Method  string       `json:"method"`
+	ReqId   int64        `json:"req_id"`
+	Result  CancelResult `json:"result"`
+	Success bool         `json:"success"`
+	TimeIn  string       `json:"time_in"`
+	TimeOut string       `json:"time_out"`
+}
