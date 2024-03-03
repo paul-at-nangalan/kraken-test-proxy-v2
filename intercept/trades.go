@@ -59,7 +59,7 @@ func (p *TradeIntercept) Northbound(msg []byte) {
 			orderparams := OrderParams{
 				LimitPrice:   params["limit_price"].(float64),
 				OrderType:    params["order_type"].(string),
-				OrderUserref: params["order_userref"].(int64),
+				OrderUserref: int64(params["order_userref"].(float64)),
 				OrderQty:     params["order_qty"].(float64),
 				Side:         params["side"].(string),
 				Symbol:       params["symbol"].(string),

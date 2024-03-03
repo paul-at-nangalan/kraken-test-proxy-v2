@@ -43,3 +43,15 @@ copy the cfg/ directory to a seperate location
 ## Running
 kraken-test-proxy-v2 --cfg ./cfg
 
+## Creating a specific interceptor
+
+You can create your own interceptor, it simply needs to implement the Intercept interface.
+```
+type Intercept interface {
+    Northbound(msg []byte)
+    Southbound(msg []byte)
+
+    InjectSouth() (msg []byte) /// nil for no message
+}
+```
+And then load it into the proxy in the wsHandler function in server/proxy.go
