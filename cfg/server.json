@@ -1,0 +1,5 @@
+{
+	"Certfile": "./proxy/server-certs.crt",
+	"Keyfile":  "./proxy/server.key",
+	"Port": ":8443"
+}

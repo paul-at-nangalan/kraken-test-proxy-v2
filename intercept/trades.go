@@ -42,8 +42,8 @@ func NewTradeIntercept() *TradeIntercept {
 		enabled:       tradeinterceptcfg.Enabled,
 		feeratio:      tradeinterceptcfg.FeeRatio,
 		pendingtrades: make(map[int64]Execution),
-		orderrequests: make(chan *OrderReq),
-		traderesp:     make(chan *Execution),
+		orderrequests: make(chan *OrderReq, 100),
+		traderesp:     make(chan *Execution, 100),
 	}
 }
 

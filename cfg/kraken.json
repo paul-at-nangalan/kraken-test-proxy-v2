@@ -1,0 +1,5 @@
+{
+	"UrlPrivate": "ws-auth.kraken.com/v2",
+	"UrlPublic": "ws.kraken.com/v2",
+	"Timeout": "30s"
+}

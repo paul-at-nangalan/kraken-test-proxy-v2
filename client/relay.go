@@ -1,6 +1,7 @@
 package client
 
 import (
+	"fmt"
 	"github.com/gorilla/websocket"
 	"github.com/paul-at-nangalan/errorhandler/handlers"
 	"github.com/paul-at-nangalan/json-config/cfg"
@@ -15,24 +16,27 @@ type Relay struct {
 
 type KrakenCfg struct {
 	UrlPrivate string `json:"UrlPrivate"`
-	Apikey     string `json:"Apikey"`
-	Apisecret  string `json:"Apisecret"`
+	UrlPublic  string `json:"UrlPublic"`
 	Timeout    string
 }
 
 func (p *KrakenCfg) Expand() {
 	p.UrlPrivate = os.ExpandEnv(p.UrlPrivate)
-	p.Apikey = os.ExpandEnv(p.Apikey)
-	p.Apisecret = os.ExpandEnv(p.Apisecret)
+	p.UrlPublic = os.ExpandEnv(p.UrlPublic)
 }
 
-func Connect() *Relay {
+func Connect(isprivate bool) *Relay {
 	krkcfg := KrakenCfg{}
 	err := cfg.Read("kraken", &krkcfg)
 	handlers.PanicOnError(err)
 
+	url := krkcfg.UrlPrivate
+	if !isprivate {
+		url = krkcfg.UrlPublic
+	}
+	fmt.Println("Connecting to url ", url)
 	// Connect to Kraken WebSocket API
-	conn, _, err := websocket.DefaultDialer.Dial("wss://"+krkcfg.UrlPrivate, nil)
+	conn, _, err := websocket.DefaultDialer.Dial("wss://"+url, nil)
 	handlers.PanicOnError(err)
 	timeout, err := time.ParseDuration(krkcfg.Timeout)
 	handlers.PanicOnError(err)
