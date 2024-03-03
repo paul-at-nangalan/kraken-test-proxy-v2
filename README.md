@@ -1,5 +1,9 @@
 # kraken-test-proxy-v2
-A very basic test proxy for Kraken Websock v2 which injects trades when test orders are placed.
+I've made this public in case someone finds it useful.
+It's just a very basic test proxy for Kraken Websock v2 which injects trades when test orders are placed.
+
+*** WARNING: this is a proxy - all orders will be forwarded to the exchange - make sure the test only (validate)
+***   param is set correctly in the order (see Kraken web socket v2 docs)
 
 ## Build
 
@@ -18,6 +22,8 @@ You probably don't need to change the config for the proxy except for fees, whic
 ### Your trading engine
 Public URL of the trading engine: 127.0.0.1:8443/public
 Private URL of the trading engine: 127.0.0.1:8443/private
+
+
 
 ## Install
 If the PATH env variable is pointed at the go/bin directory, there's no need to install, but you might want to
