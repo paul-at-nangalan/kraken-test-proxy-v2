@@ -70,7 +70,7 @@ func (p *TradeIntercept) Northbound(msg []byte) {
 			req := &OrderReq{
 				Method: method,
 				Params: orderparams,
-				ReqId:  datamap["req_id"].(int64),
+				ReqId:  int64(datamap["req_id"].(float64)),
 			}
 
 			p.orderrequests <- req
