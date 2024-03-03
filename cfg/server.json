@@ -1,5 +1,8 @@
 {
 	"Certfile": "./proxy/server-certs.crt",
 	"Keyfile":  "./proxy/server.key",
-	"Port": ":8443"
+	"Port": ":8443",
+
+	"LogPrivate": false,
+	"LogPublic": false
 }

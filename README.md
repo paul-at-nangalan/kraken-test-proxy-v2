@@ -17,13 +17,24 @@ go install
 
 ## Config
 ### Proxy
-You probably don't need to change the config for the proxy except for fees, which are in cfg/trade-intercept.json
+Set up the certificate config for the server, server.json:
+Certfile: this should point to a concatenation of the server cert and CA certs
+Keyfile: this should point to the private key file
+
+You can enable logging with these params in the server.json:
+LogPrivate
+LogPublic
+
+For _testing_ with this proxy, you will probably need to set insecure mode in the websocket dialer of your trading engine, something like this:
+```
+dialer.TLSClientConfig = &tls.Config{
+    InsecureSkipVerify: true,
+}
+```
 
 ### Your trading engine
 Public URL of the trading engine: 127.0.0.1:8443/public
 Private URL of the trading engine: 127.0.0.1:8443/private
-
-
 
 ## Install
 If the PATH env variable is pointed at the go/bin directory, there's no need to install, but you might want to
