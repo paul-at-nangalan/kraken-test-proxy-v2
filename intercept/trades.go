@@ -92,12 +92,12 @@ func (p *TradeIntercept) Northbound(msg []byte) (forward bool) {
 			case "cancel_order":
 				//// inject a cancel_order +ve response
 				params := datamap["params"].(map[string]interface{})
-				orders := params["orders"].([]string)
+				orders := params["orders"].([]interface{})
 				cancelparams := CancelParams{
 					Orders: make([]string, 0),
 				}
 				for _, oid := range orders {
-					cancelparams.Orders = append(cancelparams.Orders, oid)
+					cancelparams.Orders = append(cancelparams.Orders, oid.(string))
 				}
 				cancelorder := CancelRequest{
 					Method: "cancel_order",
