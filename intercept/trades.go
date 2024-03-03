@@ -172,9 +172,10 @@ func (p *TradeIntercept) Southbound(msg []byte) (forward bool) {
 		if ok && method == "cancel_order" {
 			success := datamap["success"].(bool)
 			if !success {
-				if len(p.cancelresp) > 0 {
+				if len(p.cancelorders) > 0 {
 					//replace this message with a success message for all cancellations
 					p.log("Replacing ", string(msg), " with successful cancel")
+					<-p.cancelorders
 
 					cancelresp := &CancelResp{
 						Method: "batch_cancel",
@@ -190,6 +191,11 @@ func (p *TradeIntercept) Southbound(msg []byte) (forward bool) {
 				}
 
 				return false
+			} else {
+				if len(p.cancelorders) > 0 {
+					///deque the request
+					<-p.cancelorders
+				}
 			}
 		}
 	}

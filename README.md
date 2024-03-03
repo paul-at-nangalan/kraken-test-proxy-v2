@@ -48,8 +48,8 @@ kraken-test-proxy-v2 --cfg ./cfg
 You can create your own interceptor, it simply needs to implement the Intercept interface.
 ```
 type Intercept interface {
-    Northbound(msg []byte)
-    Southbound(msg []byte)
+    Northbound(msg []byte)(forward bool)
+    Southbound(msg []byte)(forward bool)
 
     InjectSouth() (msg []byte) /// nil for no message
 }
