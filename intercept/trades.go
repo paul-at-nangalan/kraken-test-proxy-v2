@@ -94,12 +94,12 @@ func (p *TradeIntercept) Northbound(msg []byte) (forward bool) {
 			case "cancel_order":
 				//// inject a cancel_order +ve response
 				params := datamap["params"].(map[string]interface{})
-				orders := params["orders"].([]interface{})
+				orders := params["order_userref"].([]interface{})
 				cancelparams := CancelParams{
-					Orders: make([]string, 0),
+					Orderuserref: make([]int64, 0),
 				}
-				for _, oid := range orders {
-					cancelparams.Orders = append(cancelparams.Orders, oid.(string))
+				for _, order := range orders {
+					cancelparams.Orderuserref = append(cancelparams.Orderuserref, int64(order.(float64)))
 				}
 				cancelorder := CancelRequest{
 					Method: "cancel_order",
@@ -177,19 +177,21 @@ func (p *TradeIntercept) Southbound(msg []byte) (forward bool) {
 				if len(p.cancelorders) > 0 {
 					//replace this message with a success message for all cancellations
 					p.log("Replacing ", string(msg), " with successful cancel")
-					<-p.cancelorders
+					orders := <-p.cancelorders
+					for _, order := range orders.Params.Orderuserref {
 
-					cancelresp := &CancelResp{
-						Method: "batch_cancel",
-						ReqId:  int64(datamap["req_id"].(float64)),
-						Result: CancelResult{
-							Count: 1,
-						},
-						Success: true,
-						TimeIn:  time.Now().Format(TIMEFORMAT),
-						TimeOut: time.Now().Format(TIMEFORMAT),
+						cancelresp := &CancelResp{
+							Method: "cancel_order",
+							ReqId:  int64(datamap["req_id"].(float64)),
+							Result: CancelResult{
+								Orderuserref: order,
+							},
+							Success: true,
+							TimeIn:  time.Now().Format(TIMEFORMAT),
+							TimeOut: time.Now().Format(TIMEFORMAT),
+						}
+						p.cancelresp <- cancelresp
 					}
-					p.cancelresp <- cancelresp
 				}
 
 				return false

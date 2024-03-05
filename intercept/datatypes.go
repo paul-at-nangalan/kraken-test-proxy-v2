@@ -47,7 +47,7 @@ type ExecMsg struct {
 }
 
 type CancelParams struct {
-	Orders []string `json:"orders"` //// order ID's
+	Orderuserref []int64 `json:"order_userref"`
 }
 
 type CancelRequest struct {
@@ -57,7 +57,7 @@ type CancelRequest struct {
 }
 
 type CancelResult struct {
-	Count int `json:"count"`
+	Orderuserref int64 `json:"order_userref"`
 }
 
 type CancelResp struct {
