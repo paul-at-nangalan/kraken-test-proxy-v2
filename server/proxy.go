@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 )
 
 var upgrader = websocket.Upgrader{
@@ -70,7 +71,7 @@ func Listen() {
 
 func (p *WebSockProxy) logmsg(msg []byte, preffix string) {
 	if p.enablelogging {
-		fmt.Println(preffix, ":", string(msg))
+		fmt.Println(preffix, " - ", time.Now().Format("2006-01-02 15:04:05"), ":", string(msg))
 	}
 }
 
@@ -94,9 +95,12 @@ func (p *WebSockProxy) southbound() {
 			log.Println("Recv error north", err)
 			return
 		}
-		p.intercept.Southbound(msg)
-
 		p.logmsg(msg, "s")
+		if !p.intercept.Southbound(msg) {
+			p.logmsg(msg, "s-dropped")
+			continue
+		}
+
 		err = p.conn.WriteMessage(websocket.BinaryMessage, msg)
 		if err != nil {
 			log.Println("Send error south", err)
@@ -115,8 +119,11 @@ func (p *WebSockProxy) northbound() {
 			log.Println("Recv error south", err)
 			return
 		}
-		p.intercept.Northbound(message)
 		p.logmsg(message, "n")
+		if !p.intercept.Northbound(message) {
+			p.logmsg(message, "n-dropped")
+			continue
+		}
 		err = p.relay.SendMsg(message)
 		if err != nil {
 			log.Println("Send error north", err)

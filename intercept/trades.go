@@ -49,6 +49,8 @@ func NewTradeIntercept(enablelogging bool) *TradeIntercept {
 		pendingtrades: make(map[int64]Execution),
 		orderrequests: make(chan *OrderReq, 100),
 		traderesp:     make(chan *Execution, 100),
+		cancelorders:  make(chan *CancelRequest, 100),
+		cancelresp:    make(chan *CancelResp, 100),
 
 		enablelogging: enablelogging,
 	}
@@ -215,13 +217,13 @@ func (p *TradeIntercept) InjectSouth() (msg []byte) {
 			}
 			msg, err := json.Marshal(execmsg)
 			handlers.PanicOnError(err)
-			p.log("sending exec response ", msg)
+			//p.log("sending exec response ", string(msg))
 			return msg
 		} else if len(p.cancelresp) > 0 {
 			cancelresp := <-p.cancelresp
 			msg, err := json.Marshal(cancelresp)
 			handlers.PanicOnError(err)
-			p.log("sending cancel response ", msg)
+			//p.log("sending cancel response ", string(msg))
 			return msg
 		}
 	}
