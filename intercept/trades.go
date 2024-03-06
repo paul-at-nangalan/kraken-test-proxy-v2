@@ -122,12 +122,15 @@ func (p *TradeIntercept) handleOrderReq() {
 		orderid := fmt.Sprint("XXX", orderreq.ReqId)
 
 		fees := Fee{
-			Asset: strings.Split(orderreq.Params.Symbol, "/")[0],
-			Qty:   orderreq.Params.OrderQty * orderreq.Params.LimitPrice * p.feeratio,
+			Asset: strings.Split(orderreq.Params.Symbol, "/")[1],
+			/// qty of 1st * price of 2nd = qty of 2nd. qty of 2nd * fees ratio = total fees
+			Qty: orderreq.Params.OrderQty * orderreq.Params.LimitPrice * p.feeratio,
 		}
 		exec := Execution{
-			Cost: (orderreq.Params.OrderQty * orderreq.Params.LimitPrice) +
-				(orderreq.Params.OrderQty * orderreq.Params.LimitPrice * p.feeratio),
+			//// This is not clearly defined on Kraken docs ... but I think it should be how much we had to sell (whether its a buy or sell order)
+			///   of an asset to get the other asset
+			Cost: (orderreq.Params.OrderQty) +
+				(orderreq.Params.OrderQty * p.feeratio),
 			ExecId:       execid,
 			ExecType:     "trade",
 			Fees:         []Fee{fees},
