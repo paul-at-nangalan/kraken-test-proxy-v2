@@ -89,7 +89,7 @@ func (p *TradeIntercept) Northbound(msg []byte) (forward bool) {
 					Params: orderparams,
 					ReqId:  int64(datamap["req_id"].(float64)),
 				}
-
+				fmt.Println("adding order request to queue")
 				p.orderrequests <- req
 			case "cancel_order":
 				//// inject a cancel_order +ve response
@@ -116,6 +116,7 @@ func (p *TradeIntercept) Northbound(msg []byte) (forward bool) {
 func (p *TradeIntercept) handleOrderReq() {
 	for len(p.orderrequests) > 0 {
 		orderreq := <-p.orderrequests
+		fmt.Println("pull order req from the queue")
 		execid := fmt.Sprint("XXX", p.execid)
 		p.execid++
 		orderid := fmt.Sprint("XXX", orderreq.ReqId)
@@ -141,6 +142,7 @@ func (p *TradeIntercept) handleOrderReq() {
 			Timestamp:    time.Now().Format(TIMEFORMAT),
 			TradeId:      orderreq.Params.OrderUserref,
 		}
+		fmt.Println("push exec to queue")
 		p.pendingtrades[orderreq.ReqId] = exec
 	}
 
@@ -148,29 +150,36 @@ func (p *TradeIntercept) handleOrderReq() {
 
 func (p *TradeIntercept) Southbound(msg []byte) (forward bool) {
 	if p.enabled {
+		//// dequeu any previous northbound order requests and put into a map - this is to avoid 2 threads accessing the map
+		///   this puts a execution type onto the map - all we need to do then is wait for the corresponding
+		///   south bound add_order success message and inject the execution _after_ by putting it on the traderesp queue
 		p.handleOrderReq()
 
 		///now look at the southbound message to see if it is an order resposne for any order requests
 		datamap := make(map[string]interface{})
 		err := json.Unmarshal(msg, &datamap)
 		handlers.PanicOnError(err)
-		channel, ok := datamap["channel"].(string)
-		if ok && channel == "executions" {
-			data := datamap["data"].([]interface{})
-			for _, entry := range data {
-				execdetails := entry.(map[string]interface{})
-				if execdetails["exec_type"].(string) == "trade" {
-					orderid := int64(execdetails["order_userref"].(float64))
-					exectrade, ok := p.pendingtrades[orderid]
-					if !ok {
-						continue
-					}
-					p.traderesp <- &exectrade
-					delete(p.pendingtrades, orderid)
-				}
+		method, ok := datamap["method"].(string)
+		if ok && method == "add_order" {
+			result := datamap["result"].(map[string]interface{})
+			orderresult := OrderResult{
+				OrderId:      "",
+				OrderUserref: int64(result["order_userref"].(float64)),
+			}
+			orderressp := OrderResp{
+				Method:  "",
+				ReqId:   int64(datamap["req_id"].(float64)),
+				Result:  orderresult,
+				Success: datamap["success"].(bool),
+				TimeIn:  time.Time{}, ///don't care
+				TimeOut: time.Time{},
+			}
+			exectrade, ok := p.pendingtrades[orderressp.Result.OrderUserref]
+			if ok {
+				p.traderesp <- &exectrade
+				delete(p.pendingtrades, orderressp.Result.OrderUserref)
 			}
 		}
-		method, ok := datamap["method"].(string)
 		if ok && method == "cancel_order" {
 			success := datamap["success"].(bool)
 			if !success {

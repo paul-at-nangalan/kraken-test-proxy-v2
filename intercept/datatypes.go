@@ -1,5 +1,7 @@
 package intercept
 
+import "time"
+
 type OrderParams struct {
 	LimitPrice   float64 `json:"limit_price"`
 	OrderType    string  `json:"order_type"`
@@ -67,4 +69,18 @@ type CancelResp struct {
 	Success bool         `json:"success"`
 	TimeIn  string       `json:"time_in"`
 	TimeOut string       `json:"time_out"`
+}
+
+type OrderResult struct {
+	OrderId      string `json:"order_id"`
+	OrderUserref int64  `json:"order_userref"`
+}
+
+type OrderResp struct {
+	Method  string      `json:"method"`
+	ReqId   int64       `json:"req_id"`
+	Result  OrderResult `json:"result"`
+	Success bool        `json:"success"`
+	TimeIn  time.Time   `json:"time_in"`
+	TimeOut time.Time   `json:"time_out"`
 }
