@@ -41,6 +41,18 @@ type Execution struct {
 	TradeId      int64   `json:"trade_id"`
 }
 
+func (p *Execution) Type() string {
+	return "executions"
+}
+
+func (p *Execution) Id() string {
+	return "executions"
+}
+
+func (p *Execution) Data() interface{} {
+	return p
+}
+
 type ExecMsg struct {
 	Channel  string       `json:"channel"`
 	Data     []*Execution `json:"data"`

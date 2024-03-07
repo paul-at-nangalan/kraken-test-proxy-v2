@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/paul-at-nangalan/errorhandler/handlers"
 	"github.com/paul-at-nangalan/json-config/cfg"
+	"kraken-test-proxy-v2/recorder"
 	"strings"
 	"time"
 )
@@ -27,33 +28,40 @@ type TradeIntercept struct {
 
 	///Only the southbound thread should touch this map
 	pendingtrades map[int64]Execution
+	pastrtrades   map[int64]Execution
 
 	orderrequests chan *OrderReq
 	cancelorders  chan *CancelRequest
 	/// Once we see an order response - enqueue an exec response for the next round
-	traderesp  chan *Execution
+	traderesp  chan []*Execution
 	cancelresp chan *CancelResp
 	execid     int64
 	sequence   int64
 
 	enablelogging bool
+
+	msgreplay *recorder.MessageReplay
 }
 
-func NewTradeIntercept(enablelogging bool) *TradeIntercept {
+func NewTradeIntercept(enablelogging bool, msgreplay *recorder.MessageReplay) *TradeIntercept {
 	tradeinterceptcfg := TradeInterceptCfg{}
 	err := cfg.Read("trade-intercept", &tradeinterceptcfg)
 	handlers.PanicOnError(err)
-	return &TradeIntercept{
+	tradeintercept := &TradeIntercept{
 		enabled:       tradeinterceptcfg.Enabled,
 		feeratio:      tradeinterceptcfg.FeeRatio,
 		pendingtrades: make(map[int64]Execution),
 		orderrequests: make(chan *OrderReq, 100),
-		traderesp:     make(chan *Execution, 100),
+		traderesp:     make(chan []*Execution, 100),
 		cancelorders:  make(chan *CancelRequest, 100),
 		cancelresp:    make(chan *CancelResp, 100),
+		pastrtrades:   make(map[int64]Execution),
 
 		enablelogging: enablelogging,
+		msgreplay:     msgreplay,
 	}
+
+	return tradeintercept
 }
 
 func (p *TradeIntercept) log(msgs ...interface{}) {
@@ -91,6 +99,7 @@ func (p *TradeIntercept) Northbound(msg []byte) (forward bool) {
 				}
 				fmt.Println("adding order request to queue")
 				p.orderrequests <- req
+
 			case "cancel_order":
 				//// inject a cancel_order +ve response
 				params := datamap["params"].(map[string]interface{})
@@ -107,6 +116,20 @@ func (p *TradeIntercept) Northbound(msg []byte) (forward bool) {
 					ReqId:  int64(datamap["req_id"].(float64)),
 				}
 				p.cancelorders <- &cancelorder
+			case "subscribe":
+				///see if this is a subscribe to the executions channel
+				params := datamap["params"].(map[string]interface{})
+				if params["channel"].(string) == "executions" {
+					execs := p.msgreplay.Replay("executions")
+					if len(execs) > 0 {
+						marshalled := make([]*Execution, 0)
+						for _, exec := range execs {
+							marshalled = append(marshalled, exec.(*Execution))
+						}
+						p.traderesp <- marshalled
+					}
+
+				}
 			}
 		}
 	}
@@ -179,7 +202,8 @@ func (p *TradeIntercept) Southbound(msg []byte) (forward bool) {
 			}
 			exectrade, ok := p.pendingtrades[orderressp.Result.OrderUserref]
 			if ok {
-				p.traderesp <- &exectrade
+				p.traderesp <- []*Execution{&exectrade}
+				p.msgreplay.AddMessage(&exectrade)
 				delete(p.pendingtrades, orderressp.Result.OrderUserref)
 			}
 		}
@@ -225,7 +249,7 @@ func (p *TradeIntercept) InjectSouth() (msg []byte) {
 			exec := <-p.traderesp
 			execmsg := &ExecMsg{
 				Channel:  "executions",
-				Data:     []*Execution{exec},
+				Data:     exec,
 				Sequence: p.sequence,
 				Type:     "snapshot",
 			}

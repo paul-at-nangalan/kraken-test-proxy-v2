@@ -7,6 +7,7 @@ import (
 	"github.com/paul-at-nangalan/json-config/cfg"
 	"kraken-test-proxy-v2/client"
 	"kraken-test-proxy-v2/intercept"
+	"kraken-test-proxy-v2/recorder"
 	"log"
 	"net/http"
 	"os"
@@ -58,6 +59,8 @@ func NewWebSockProxy(intercept Intercept, conn *websocket.Conn, relay *client.Re
 	return wsp
 }
 
+var msgreplay *recorder.MessageReplay
+
 func Listen() {
 	cfgsvr = &Config{}
 	err := cfg.Read("server", cfgsvr)
@@ -65,6 +68,10 @@ func Listen() {
 
 	http.HandleFunc("/private", wsHandlerPrivate)
 	http.HandleFunc("/public", wsHandlerPublic)
+
+	////Create a message replayer
+	msgreplay = recorder.NewMessageReplay()
+
 	err = http.ListenAndServeTLS(cfgsvr.Port, cfgsvr.Certfile, cfgsvr.Keyfile, nil)
 	handlers.PanicOnError(err)
 }
@@ -148,7 +155,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request, private bool) {
 		enablelogging = true
 	}
 
-	msgintercept := intercept.NewTradeIntercept(enablelogging)
+	msgintercept := intercept.NewTradeIntercept(enablelogging, msgreplay)
 	wshandler := NewWebSockProxy(msgintercept, conn, relay, enablelogging)
 
 	go wshandler.southbound()
