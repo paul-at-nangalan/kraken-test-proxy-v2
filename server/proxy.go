@@ -39,7 +39,8 @@ type Intercept interface {
 	Northbound(msg []byte) (forward bool)
 	Southbound(msg []byte) (forward bool)
 
-	InjectSouth() (msg []byte) /// nil for no message
+	InjectSouth() (msg []byte)             /// nil for no message
+	CheckFilters(msg []byte) (logmsg bool) /// For whether to log the message or not
 }
 
 type WebSockProxy struct {
@@ -77,7 +78,7 @@ func Listen() {
 }
 
 func (p *WebSockProxy) logmsg(msg []byte, preffix string) {
-	if p.enablelogging {
+	if p.enablelogging && p.intercept.CheckFilters(msg) {
 		fmt.Println(preffix, " - ", time.Now().Format("2006-01-02 15:04:05"), ":", string(msg))
 	}
 }

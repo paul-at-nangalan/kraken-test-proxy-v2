@@ -14,9 +14,15 @@ const (
 	TIMEFORMAT = "2006-01-02T15:04:05.000000Z"
 )
 
+type Filter struct {
+	Matchon   string
+	FilterOut bool
+}
+
 type TradeInterceptCfg struct {
-	Enabled  bool
-	FeeRatio float64
+	Enabled    bool
+	FeeRatio   float64
+	LogFilters []Filter
 }
 
 func (p *TradeInterceptCfg) Expand() {
@@ -41,12 +47,26 @@ type TradeIntercept struct {
 	enablelogging bool
 
 	msgreplay *recorder.MessageReplay
+
+	logfilterin  []string
+	logfilterout []string
 }
 
 func NewTradeIntercept(enablelogging bool, msgreplay *recorder.MessageReplay) *TradeIntercept {
 	tradeinterceptcfg := TradeInterceptCfg{}
 	err := cfg.Read("trade-intercept", &tradeinterceptcfg)
 	handlers.PanicOnError(err)
+
+	southboundfilterin := make([]string, 0)
+	southboundfilterout := make([]string, 0)
+	for _, filter := range tradeinterceptcfg.LogFilters {
+		if filter.FilterOut {
+			southboundfilterout = append(southboundfilterout, filter.Matchon)
+		} else {
+			southboundfilterin = append(southboundfilterin, filter.Matchon)
+		}
+	}
+
 	tradeintercept := &TradeIntercept{
 		enabled:       tradeinterceptcfg.Enabled,
 		feeratio:      tradeinterceptcfg.FeeRatio,
@@ -59,6 +79,8 @@ func NewTradeIntercept(enablelogging bool, msgreplay *recorder.MessageReplay) *T
 
 		enablelogging: enablelogging,
 		msgreplay:     msgreplay,
+		logfilterin:   southboundfilterin,
+		logfilterout:  southboundfilterout,
 	}
 
 	return tradeintercept
@@ -172,6 +194,21 @@ func (p *TradeIntercept) handleOrderReq() {
 		p.pendingtrades[orderreq.ReqId] = exec
 	}
 
+}
+
+func (p *TradeIntercept) CheckFilters(msg []byte) bool {
+	for _, filter := range p.logfilterin {
+		if strings.Contains(string(msg), filter) {
+			return true
+		}
+	}
+	for _, filter := range p.logfilterout {
+		if strings.Contains(string(msg), filter) {
+			return false
+		}
+
+	}
+	return true
 }
 
 func (p *TradeIntercept) Southbound(msg []byte) (forward bool) {

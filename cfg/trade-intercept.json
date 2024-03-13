@@ -1,4 +1,18 @@
 {
 	"Enabled": true,
-	"FeeRatio": 0.26
+	"FeeRatio": 0.0026,
+	"LogFilters":[
+		{
+		"Matchon":"{\"channel\":\"heartbeat\"}",
+		"FilterOut": true
+		},
+		{
+		"Matchon":"{\"method\":\"pong\"",
+		"FilterOut": true
+		},
+		{
+		"Matchon":"{\"method\":\"ping\"",
+		"FilterOut": true
+		}
+	]
 }
