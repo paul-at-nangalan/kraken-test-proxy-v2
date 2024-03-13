@@ -119,7 +119,7 @@ func (p *TradeIntercept) Northbound(msg []byte) (forward bool) {
 					Params: orderparams,
 					ReqId:  int64(datamap["req_id"].(float64)),
 				}
-				fmt.Println("adding order request to queue")
+				//fmt.Println("adding order request to queue")
 				p.orderrequests <- req
 
 			case "cancel_order":
@@ -190,8 +190,8 @@ func (p *TradeIntercept) handleOrderReq() {
 			Timestamp:    time.Now().Format(TIMEFORMAT),
 			TradeId:      orderreq.Params.OrderUserref,
 		}
-		fmt.Println("push exec to queue")
-		p.pendingtrades[orderreq.ReqId] = exec
+		p.log("move exec to the map by order user ref ", exec.OrderUserref, " ", exec.ExecId)
+		p.pendingtrades[orderreq.Params.OrderUserref] = exec
 	}
 
 }
@@ -237,8 +237,10 @@ func (p *TradeIntercept) Southbound(msg []byte) (forward bool) {
 				TimeIn:  time.Time{}, ///don't care
 				TimeOut: time.Time{},
 			}
+			fmt.Println("Get pending trade inj message")
 			exectrade, ok := p.pendingtrades[orderressp.Result.OrderUserref]
 			if ok {
+				fmt.Println("push exec to queue")
 				p.traderesp <- []*Execution{&exectrade}
 				p.msgreplay.AddMessage(&exectrade)
 				delete(p.pendingtrades, orderressp.Result.OrderUserref)
@@ -292,7 +294,7 @@ func (p *TradeIntercept) InjectSouth() (msg []byte) {
 			}
 			msg, err := json.Marshal(execmsg)
 			handlers.PanicOnError(err)
-			//p.log("sending exec response ", string(msg))
+			//fmt.Println("sending exec response ", string(msg)) ///DEBUG
 			return msg
 		} else if len(p.cancelresp) > 0 {
 			cancelresp := <-p.cancelresp
