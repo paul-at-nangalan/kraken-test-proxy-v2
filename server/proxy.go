@@ -7,6 +7,7 @@ import (
 	"github.com/paul-at-nangalan/json-config/cfg"
 	"kraken-test-proxy-v2/client"
 	"kraken-test-proxy-v2/intercept"
+	orderbooks2 "kraken-test-proxy-v2/orderbooks"
 	"kraken-test-proxy-v2/recorder"
 	"log"
 	"net/http"
@@ -26,6 +27,8 @@ type Config struct {
 
 	LogPrivate bool
 	LogPublic  bool
+
+	OrderbookSymbols []string
 }
 
 func (p *Config) Expand() {
@@ -34,6 +37,7 @@ func (p *Config) Expand() {
 }
 
 var cfgsvr *Config
+var orderbooks *orderbooks2.SharedOrderbook
 
 type Intercept interface {
 	Northbound(msg []byte) (forward bool)
@@ -66,6 +70,8 @@ func Listen() {
 	cfgsvr = &Config{}
 	err := cfg.Read("server", cfgsvr)
 	handlers.PanicOnError(err)
+
+	orderbooks = orderbooks2.NewSharedOrderbook(cfgsvr.OrderbookSymbols)
 
 	http.HandleFunc("/private", wsHandlerPrivate)
 	http.HandleFunc("/public", wsHandlerPublic)

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/paul-at-nangalan/errorhandler/handlers"
 	"github.com/paul-at-nangalan/json-config/cfg"
+	orderbooks2 "kraken-test-proxy-v2/orderbooks"
 	"kraken-test-proxy-v2/recorder"
 	"strings"
 	"time"
@@ -23,6 +24,7 @@ type TradeInterceptCfg struct {
 	Enabled    bool
 	FeeRatio   float64
 	LogFilters []Filter
+	Mode       string /// "test" or "semi-real" - semi real will only send a trade response if the price matches the order book
 }
 
 func (p *TradeInterceptCfg) Expand() {
@@ -50,9 +52,13 @@ type TradeIntercept struct {
 
 	logfilterin  []string
 	logfilterout []string
+
+	Matchorderbook bool
+
+	orderbooks *orderbooks2.SharedOrderbook
 }
 
-func NewTradeIntercept(enablelogging bool, msgreplay *recorder.MessageReplay) *TradeIntercept {
+func NewTradeIntercept(enablelogging bool, msgreplay *recorder.MessageReplay, orderbook *orderbooks2.SharedOrderbook) *TradeIntercept {
 	tradeinterceptcfg := TradeInterceptCfg{}
 	err := cfg.Read("trade-intercept", &tradeinterceptcfg)
 	handlers.PanicOnError(err)
@@ -81,6 +87,8 @@ func NewTradeIntercept(enablelogging bool, msgreplay *recorder.MessageReplay) *T
 		msgreplay:     msgreplay,
 		logfilterin:   southboundfilterin,
 		logfilterout:  southboundfilterout,
+
+		orderbooks: orderbook,
 	}
 
 	return tradeintercept
@@ -166,6 +174,18 @@ func (p *TradeIntercept) handleOrderReq() {
 		p.execid++
 		orderid := fmt.Sprint("XXX", orderreq.ReqId)
 
+		///The cost ought to be in the currency being sold
+		cost := float64(0)
+		if orderreq.Params.Side == "buy" {
+			///if we are buying, then the cost is the qty of the 1st currency
+			cost = (orderreq.Params.OrderQty) +
+				(orderreq.Params.OrderQty * p.feeratio)
+		} else {
+			///if we are selling, the cost is the qty of the 2nd currency
+			cost = (orderreq.Params.OrderQty * orderreq.Params.LimitPrice) +
+				(orderreq.Params.OrderQty * orderreq.Params.LimitPrice * p.feeratio)
+		}
+
 		fees := Fee{
 			Asset: strings.Split(orderreq.Params.Symbol, "/")[1],
 			/// qty of 1st * price of 2nd = qty of 2nd. qty of 2nd * fees ratio = total fees
@@ -174,8 +194,7 @@ func (p *TradeIntercept) handleOrderReq() {
 		exec := Execution{
 			//// This is not clearly defined on Kraken docs ... but I think it should be how much we had to sell (whether its a buy or sell order)
 			///   of an asset to get the other asset
-			Cost: (orderreq.Params.OrderQty) +
-				(orderreq.Params.OrderQty * p.feeratio),
+			Cost:         cost,
 			ExecId:       execid,
 			ExecType:     "trade",
 			Fees:         []Fee{fees},
