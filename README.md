@@ -22,10 +22,14 @@ Set up the certificate config for the server, server.json:
 Certfile: this should point to a concatenation of the server cert and CA certs
 Keyfile: this should point to the private key file
 
+### Logging messages
 You can enable logging with these params in the server.json:
 LogPrivate
 LogPublic
 
+You can add filters in the trade-intercept.json - see the example file (./cfg/trade-intercept.json) for the format
+
+### Connecting to the proxy
 For _testing_ with this proxy, you will probably need to set insecure mode in the websocket dialer of your trading engine, something like this:
 ```
 dialer.TLSClientConfig = &tls.Config{
