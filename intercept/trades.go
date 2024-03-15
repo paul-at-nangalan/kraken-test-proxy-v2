@@ -275,12 +275,100 @@ func (p *TradeIntercept) cancelPendingTrades(cancelreq *CancelRequest) {
 	}
 }
 
+func (p *TradeIntercept) processCancelOrder(datamap map[string]interface{}, msg []byte) bool {
+	success := datamap["success"].(bool)
+
+	if !success {
+		if len(p.cancelorders) > 0 {
+			//replace this message with a success message for all cancellations
+			p.log("Replacing ", string(msg), " with successful cancel")
+			orders := <-p.cancelorders
+			p.cancelPendingTrades(orders)
+			for _, order := range orders.Params.Orderuserref {
+
+				cancelresp := &CancelResp{
+					Method: "cancel_order",
+					ReqId:  int64(datamap["req_id"].(float64)),
+					Result: CancelResult{
+						Orderuserref: order,
+					},
+					Success: true,
+					TimeIn:  time.Now().Format(TIMEFORMAT),
+					TimeOut: time.Now().Format(TIMEFORMAT),
+				}
+				p.cancelresp <- cancelresp
+			}
+		}
+
+		return false
+	} else {
+		if len(p.cancelorders) > 0 {
+			///deque the request
+			orders := <-p.cancelorders
+			p.cancelPendingTrades(orders)
+		}
+	}
+	return true
+}
+
+func (p *TradeIntercept) processAddOrder(datamap map[string]interface{}, msg []byte) bool {
+	result := datamap["result"].(map[string]interface{})
+	orderresult := OrderResult{
+		OrderId:      "",
+		OrderUserref: int64(result["order_userref"].(float64)),
+	}
+	orderressp := OrderResp{
+		Method:  "",
+		ReqId:   int64(datamap["req_id"].(float64)),
+		Result:  orderresult,
+		Success: datamap["success"].(bool),
+		TimeIn:  time.Time{}, ///don't care
+		TimeOut: time.Time{},
+	}
+	/// Full test mode - simply send a trade in response as soon as we see the order response
+	/// Otherwise we must look for an orderbook match
+	if !p.matchorderbook {
+		exectrade, ok := p.pendingtrades[orderressp.Result.OrderUserref]
+		if ok {
+			fmt.Println("push exec to queue")
+			p.traderesp <- []*Execution{exectrade}
+			p.msgreplay.AddMessage(exectrade)
+			delete(p.pendingtrades, orderressp.Result.OrderUserref)
+		}
+	}
+	return true
+}
+
+func (p *TradeIntercept) processBook(datamap map[string]interface{}) {
+	///firstly get the symbol from the datamap, and use that to get the orderbook from the shared orderbook
+	symbol := datamap["symbol"].(string)
+	orderbook := p.orderbooks.GetOrderbook(symbol)
+	/// The datamap should have a key "data" containing a map of "asks" and "bids"
+	///   each of which is an array of maps with keys "price" and "qty"
+	bids := datamap["data"].(map[string]interface{})["bids"].([]interface{})
+	asks := datamap["data"].(map[string]interface{})["asks"].([]interface{})
+	marshalledbids := make([]*orderbooks2.BidAsk, len(bids))
+	for _, bid := range bids {
+		bidmap := bid.(map[string]interface{})
+		marshalledbids = append(marshalledbids, orderbooks2.NewBidAsk(bidmap["price"].(float64), bidmap["qty"].(float64)))
+	}
+	orderbook.AddBids(marshalledbids)
+	/// now do the same for asks
+	marshalledasks := make([]*orderbooks2.BidAsk, len(asks))
+	for _, ask := range asks {
+		askmap := ask.(map[string]interface{})
+		marshalledasks = append(marshalledasks, orderbooks2.NewBidAsk(askmap["price"].(float64), askmap["qty"].(float64)))
+	}
+	orderbook.AddAsks(marshalledasks)
+}
+
 func (p *TradeIntercept) Southbound(msg []byte) (forward bool) {
 	if p.enabled {
 		//// dequeu any previous northbound order requests and put into a map - this is to avoid 2 threads accessing the map
 		///   this puts a execution type onto the map - all we need to do then is wait for the corresponding
 		///   south bound add_order success message and inject the execution _after_ by putting it on the traderesp queue
 		p.handleOrderReq()
+		p.findAndQueueMatchedTrades()
 
 		///now look at the southbound message to see if it is an order resposne for any order requests
 		datamap := make(map[string]interface{})
@@ -288,63 +376,19 @@ func (p *TradeIntercept) Southbound(msg []byte) (forward bool) {
 		handlers.PanicOnError(err)
 		method, ok := datamap["method"].(string)
 		if ok && method == "add_order" {
-			result := datamap["result"].(map[string]interface{})
-			orderresult := OrderResult{
-				OrderId:      "",
-				OrderUserref: int64(result["order_userref"].(float64)),
-			}
-			orderressp := OrderResp{
-				Method:  "",
-				ReqId:   int64(datamap["req_id"].(float64)),
-				Result:  orderresult,
-				Success: datamap["success"].(bool),
-				TimeIn:  time.Time{}, ///don't care
-				TimeOut: time.Time{},
-			}
-			/// Full test mode - simply send a trade in response as soon as we see the order response
-			/// Otherwise we must look for an orderbook match
-			if !p.matchorderbook {
-				exectrade, ok := p.pendingtrades[orderressp.Result.OrderUserref]
-				if ok {
-					fmt.Println("push exec to queue")
-					p.traderesp <- []*Execution{exectrade}
-					p.msgreplay.AddMessage(exectrade)
-					delete(p.pendingtrades, orderressp.Result.OrderUserref)
-				}
+			if !p.processAddOrder(datamap, msg) {
+				return false
 			}
 		}
 		if ok && method == "cancel_order" {
-			success := datamap["success"].(bool)
-
-			if !success {
-				if len(p.cancelorders) > 0 {
-					//replace this message with a success message for all cancellations
-					p.log("Replacing ", string(msg), " with successful cancel")
-					orders := <-p.cancelorders
-					p.cancelPendingTrades(orders)
-					for _, order := range orders.Params.Orderuserref {
-
-						cancelresp := &CancelResp{
-							Method: "cancel_order",
-							ReqId:  int64(datamap["req_id"].(float64)),
-							Result: CancelResult{
-								Orderuserref: order,
-							},
-							Success: true,
-							TimeIn:  time.Now().Format(TIMEFORMAT),
-							TimeOut: time.Now().Format(TIMEFORMAT),
-						}
-						p.cancelresp <- cancelresp
-					}
-				}
-
+			if !p.processCancelOrder(datamap, msg) {
 				return false
-			} else {
-				if len(p.cancelorders) > 0 {
-					///deque the request
-					orders := <-p.cancelorders
-					p.cancelPendingTrades(orders)
-				}
+			}
+		}
+		channel, ok := datamap["channel"].(string)
+		if ok && channel == "book" {
+			if p.matchorderbook {
+				p.processBook(datamap)
 			}
 		}
 	}

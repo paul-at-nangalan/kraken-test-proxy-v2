@@ -10,6 +10,10 @@ type BidAsk struct {
 	qty   float64
 }
 
+func NewBidAsk(price float64, qty float64) *BidAsk {
+	return &BidAsk{price, qty}
+}
+
 // /for testing only - ignore qty - for now
 type Orderbook struct {
 	asks map[float64]float64

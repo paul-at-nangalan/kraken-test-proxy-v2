@@ -162,7 +162,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request, private bool) {
 		enablelogging = true
 	}
 
-	msgintercept := intercept.NewTradeIntercept(enablelogging, msgreplay)
+	msgintercept := intercept.NewTradeIntercept(enablelogging, msgreplay, orderbooks)
 	wshandler := NewWebSockProxy(msgintercept, conn, relay, enablelogging)
 
 	go wshandler.southbound()
