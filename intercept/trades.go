@@ -21,10 +21,10 @@ type Filter struct {
 }
 
 type TradeInterceptCfg struct {
-	Enabled    bool
-	FeeRatio   float64
-	LogFilters []Filter
-	Mode       string /// "test" or "semi-real" - semi real will only send a trade response if the price matches the order book
+	Enabled        bool
+	FeeRatio       float64
+	LogFilters     []Filter
+	MatchOrderBook bool ///  if true, only send a trade response if the price would match an order in the order book
 }
 
 func (p *TradeInterceptCfg) Expand() {
@@ -35,8 +35,8 @@ type TradeIntercept struct {
 	feeratio float64
 
 	///Only the southbound thread should touch this map
-	pendingtrades map[int64]Execution
-	pastrtrades   map[int64]Execution
+	pendingtrades map[int64]*Execution
+	pastrtrades   map[int64]*Execution
 
 	orderrequests chan *OrderReq
 	cancelorders  chan *CancelRequest
@@ -53,7 +53,7 @@ type TradeIntercept struct {
 	logfilterin  []string
 	logfilterout []string
 
-	Matchorderbook bool
+	matchorderbook bool
 
 	orderbooks *orderbooks2.SharedOrderbook
 }
@@ -76,19 +76,20 @@ func NewTradeIntercept(enablelogging bool, msgreplay *recorder.MessageReplay, or
 	tradeintercept := &TradeIntercept{
 		enabled:       tradeinterceptcfg.Enabled,
 		feeratio:      tradeinterceptcfg.FeeRatio,
-		pendingtrades: make(map[int64]Execution),
+		pendingtrades: make(map[int64]*Execution),
 		orderrequests: make(chan *OrderReq, 100),
 		traderesp:     make(chan []*Execution, 100),
 		cancelorders:  make(chan *CancelRequest, 100),
 		cancelresp:    make(chan *CancelResp, 100),
-		pastrtrades:   make(map[int64]Execution),
+		pastrtrades:   make(map[int64]*Execution),
 
 		enablelogging: enablelogging,
 		msgreplay:     msgreplay,
 		logfilterin:   southboundfilterin,
 		logfilterout:  southboundfilterout,
 
-		orderbooks: orderbook,
+		matchorderbook: tradeinterceptcfg.MatchOrderBook,
+		orderbooks:     orderbook,
 	}
 
 	return tradeintercept
@@ -210,7 +211,7 @@ func (p *TradeIntercept) handleOrderReq() {
 			TradeId:      orderreq.Params.OrderUserref,
 		}
 		p.log("move exec to the map by order user ref ", exec.OrderUserref, " ", exec.ExecId)
-		p.pendingtrades[orderreq.Params.OrderUserref] = exec
+		p.pendingtrades[orderreq.Params.OrderUserref] = &exec
 	}
 
 }
@@ -228,6 +229,50 @@ func (p *TradeIntercept) CheckFilters(msg []byte) bool {
 
 	}
 	return true
+}
+
+func (p *TradeIntercept) findAndQueueMatchedTrades() {
+	if p.matchorderbook {
+		///find and queue any matched trades
+		for _, exec := range p.pendingtrades {
+			//// See if the order would be filled based on latest orderbook data
+			orderbook := p.orderbooks.GetOrderbook(exec.Symbol)
+			isfilled := false
+			fillprice := 0.0
+			fillqty := 0.0
+			if exec.Side == "buy" {
+				fillprice, fillqty = orderbook.MatchBid(exec.LastPrice, exec.LastQty)
+				if fillqty > 0 {
+					isfilled = true
+				}
+			} else {
+				fillprice, fillqty = orderbook.MatchAsk(exec.LastPrice, exec.LastQty)
+				if fillqty > 0 {
+					isfilled = true
+				}
+			}
+
+			if isfilled {
+				exec.LastPrice = fillprice
+				exec.LastQty = fillqty
+				p.traderesp <- []*Execution{exec}
+				p.msgreplay.AddMessage(exec)
+				delete(p.pendingtrades, exec.OrderUserref)
+			}
+		}
+	}
+}
+
+// // See if this order is in the pending trades map - if it is, clear it and put it on the past trades map
+func (p *TradeIntercept) cancelPendingTrades(cancelreq *CancelRequest) {
+	for _, order := range cancelreq.Params.Orderuserref {
+		exec, ok := p.pendingtrades[order]
+		if ok {
+			p.log("canceling trade ", exec.OrderUserref, " ", exec.ExecId)
+			p.pastrtrades[exec.OrderUserref] = exec
+			delete(p.pendingtrades, order)
+		}
+	}
 }
 
 func (p *TradeIntercept) Southbound(msg []byte) (forward bool) {
@@ -256,22 +301,27 @@ func (p *TradeIntercept) Southbound(msg []byte) (forward bool) {
 				TimeIn:  time.Time{}, ///don't care
 				TimeOut: time.Time{},
 			}
-			fmt.Println("Get pending trade inj message")
-			exectrade, ok := p.pendingtrades[orderressp.Result.OrderUserref]
-			if ok {
-				fmt.Println("push exec to queue")
-				p.traderesp <- []*Execution{&exectrade}
-				p.msgreplay.AddMessage(&exectrade)
-				delete(p.pendingtrades, orderressp.Result.OrderUserref)
+			/// Full test mode - simply send a trade in response as soon as we see the order response
+			/// Otherwise we must look for an orderbook match
+			if !p.matchorderbook {
+				exectrade, ok := p.pendingtrades[orderressp.Result.OrderUserref]
+				if ok {
+					fmt.Println("push exec to queue")
+					p.traderesp <- []*Execution{exectrade}
+					p.msgreplay.AddMessage(exectrade)
+					delete(p.pendingtrades, orderressp.Result.OrderUserref)
+				}
 			}
 		}
 		if ok && method == "cancel_order" {
 			success := datamap["success"].(bool)
+
 			if !success {
 				if len(p.cancelorders) > 0 {
 					//replace this message with a success message for all cancellations
 					p.log("Replacing ", string(msg), " with successful cancel")
 					orders := <-p.cancelorders
+					p.cancelPendingTrades(orders)
 					for _, order := range orders.Params.Orderuserref {
 
 						cancelresp := &CancelResp{
@@ -292,7 +342,8 @@ func (p *TradeIntercept) Southbound(msg []byte) (forward bool) {
 			} else {
 				if len(p.cancelorders) > 0 {
 					///deque the request
-					<-p.cancelorders
+					orders := <-p.cancelorders
+					p.cancelPendingTrades(orders)
 				}
 			}
 		}
