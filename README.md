@@ -1,5 +1,6 @@
 # kraken-test-proxy-v2
-I've made this public in case someone finds it useful.
+I've made this public in case someone finds it useful. It is still very much a WIP, and I'm not 100% sure about the Kraken behaviour in some cases,
+but I'll try to update this as I find out.
 It's just a very basic test proxy for Kraken Websock v2 which injects trades when test orders are placed.
 
 *** WARNING: this is a proxy - all orders will be forwarded to the exchange - make sure the test only (validate)
